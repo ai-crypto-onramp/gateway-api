@@ -1,0 +1,60 @@
+version: "3.9"
+
+services:
+  api-gateway:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      NODE_ENV: development
+      LOG_LEVEL: info
+      IDENTITY_AUTH_URL: http://mock-downstream:8080
+      KYC_URL: http://mock-downstream:8080
+      PRICING_URL: http://mock-downstream:8080
+      ORCHESTRATOR_URL: http://mock-downstream:8080
+      RATE_LIMIT_RPS: "10"
+      RATE_LIMIT_BURST: "20"
+      RATE_LIMIT_REDIS_URL: redis://redis:6379
+      JWT_ISSUER: https://auth.example.com
+      JWKS_URL: https://auth.example.com/.well-known/jwks.json
+      JWT_AUDIENCE: onramp-sdk
+      DOWNSTREAM_TIMEOUT_MS: "5000"
+      CIRCUIT_BREAKER_THRESHOLD: "50"
+      CORS_ALLOWED_ORIGINS: https://app.example.com
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      OTEL_SERVICE_NAME: api-gateway
+      ENABLE_GRAPHQL: "false"
+      WEBHOOK_SIGNING_SECRET: dev-webhook-secret
+    depends_on:
+      redis:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+      mock-downstream:
+        condition: service_started
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.110.0
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
+    ports:
+      - "4318:4318"
+
+  mock-downstream:
+    image: node:20-slim
+    volumes:
+      - ./mock-downstream.js:/app/mock-downstream.js:ro
+    command: node /app/mock-downstream.js
+    ports:
+      - "8090:8080"
